@@ -317,11 +317,17 @@ export async function claudeLocal(opts: {
             let ptyProcess: ReturnType<typeof pty.spawn> | null = null;
 
             const abortHandler = () => {
-                logger.debug('[ClaudeLocal] Abort signal triggered - terminating PTY process');
+                logger.debug('[ClaudeLocal] Abort signal triggered - terminating PTY process group');
                 try {
-                    ptyProcess?.kill();
+                    // Kill the entire process group (negative PID) so the Claude binary
+                    // grandchild is also terminated, not just the node launcher.
+                    // node-pty spawns with POSIX_SPAWN_SETSID so the child is its own
+                    // session leader and process group leader.
+                    if (ptyProcess?.pid) {
+                        process.kill(-ptyProcess.pid, 'SIGTERM');
+                    }
                 } catch {
-                    // Already dead
+                    // Already dead or no such process group
                 }
             };
             opts.abort.addEventListener('abort', abortHandler, { once: true });
